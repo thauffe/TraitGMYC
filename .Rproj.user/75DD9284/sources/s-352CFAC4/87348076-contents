@@ -1,0 +1,195 @@
+library(phytools)
+library(TESS)
+library(motmot)
+library(mvMORPH)
+library(splits)
+
+# Simulate phylogeny
+####################
+# Increase in speciation
+Lambda <- function(x) {
+  ifelse(x < ShiftAge2,  LambdaInter, LambdaIntra)
+}
+
+Tmrca <- 20 # Maximum age of the phylogeny
+ShiftAge1 <- 1 # million years ago
+ShiftAge2 <- Tmrca - ShiftAge1 # TESS: Starts with time = 0 in the past
+
+LambdaInter <- 0.2 # Speciation rate (between species branching)
+LambdaIntra <- 1 # Within species divergence (coalescent branching)
+Mu <- 0.1 # Extinction
+
+set.seed(73)
+Tree <- tess.sim.age(n = 1, age = Tmrca,
+                     lambda = Lambda,
+                     mu = Mu,
+                     MRCA = FALSE)[[1]]
+Ntip(Tree) # Number of tips
+
+# Trait evolution
+#################
+# Simulate trait evolution with an increase in rate at 1 Ma
+Bt <- branching.times(Tree)
+TreeSimmap <- make.era.map(Tree, c(0, max(Bt) - ShiftAge1))
+# layout(matrix(1))
+# plotSimmap(TreeSimmap)
+
+Sig2 <- c(0.5, 1) # Rates of trait evolution
+set.seed(73)
+Trait <- sim.rates(TreeSimmap, sig2 = c(0.05, 0.5), internal = TRUE)
+TraitMat <- matrix(Trait[1:Ntip(Tree)], ncol = 1)
+rownames(TraitMat) <- names(Trait)[1:Ntip(Tree)]
+colnames(TraitMat) <- "A"
+
+# test <- traitgmyc(tr = Tree, TraitMat = TraitMat, quiet = TRUE)
+# par(mar = c(3, 3, 0.5, 0.5))
+# plot.gmyc(test, ask = FALSE)
+
+#dev.new(width=100, height=50, unit="px")
+# par(mfrow = c(1, 1))
+# phenogram(Tree,x=Trait)
+#min threshold time (negative values) + threshold time of max likelihood, inverted, to fit phenogram x axis (positive time))
+# abline(v=-min(test$threshold.time)+test$threshold.time[which.max(test$likelihood)], col = "red")
+
+# install.packages("/home/torsten/Work/Software/TraitGMYC_0.1.0_R_x86_64-pc-linux-gnu.tar.gz",
+#                  repos = NULL, type="source")
+
+Res <- traitgmyc(tr = Tree,
+                 interval = c(0, 5),
+                 trait = TraitMat,
+                 meserr = NULL,
+                 quiet = TRUE)
+plot(Res)
+
+#############################
+#                           #
+#  M U L T I V A R I A T E  #
+#                           #
+#############################
+
+simSigma <- function(Ntraits) {
+  # Lasts longer with more traits => parallelization is inefficient though
+  Sigmas <- matrix(NA_real_, ncol = Ntraits, nrow = Ntraits)
+  # SimCov <- runif(sum(lower.tri(Sigmas, diag = FALSE)), min = 0.009, max = 0.011)
+  SimCov <- runif(sum(lower.tri(Sigmas, diag = FALSE)), min = 0.009, max = 0.2)
+  Sigmas[lower.tri(Sigmas, diag = FALSE)] <- SimCov
+  Sigmas <- t(Sigmas)
+  Sigmas[lower.tri(Sigmas, diag = FALSE)] <- SimCov
+  # diag(Sigmas) <- runif(Ntraits, min = 1e-5, max = 0.1)
+  diag(Sigmas) <- runif(Ntraits, min = 1e-4, max = 0.2)
+  return(Sigmas)
+}
+
+Lambda <- function(x) {
+  ifelse(x < ShiftAge2,  LambdaInter, LambdaIntra)
+}
+
+Tmrca <- 20 # Maximum age of the phylogeny
+ShiftAge1 <- 1 # million years ago
+ShiftAge2 <- Tmrca - ShiftAge1 # TESS: Starts with time = 0 in the past
+
+LambdaInter <- 0.2 # Speciation rate (between species branching)
+LambdaIntra <- 1 # Within species divergence (coalescent branching)
+Mu <- 0.1 # Extinction
+
+set.seed(73)
+Tree <- tess.sim.age(n = 1, age = Tmrca,
+                     lambda = Lambda,
+                     mu = Mu,
+                     MRCA = FALSE)[[1]]
+Ntip(Tree) # Number of tips
+
+# Trait evolution
+#################
+# Simulate trait evolution with an increase in rate at 1 Ma
+Bt <- branching.times(Tree)
+TreeSimmap <- make.era.map(Tree, c(0, max(Bt) - ShiftAge1))
+
+Sigma <- list("1" = matrix(c(0.05,0,0,0.05), 2),
+              "2" = matrix(c(0.5,0,0,0.5), 2))
+Theta <- c(0,0)
+TraitMat <- mvSIM(TreeSimmap, model = "BMM",
+                  param = list(ntraits = 2, sigma = Sigma, theta = Theta))
+colnames(TraitMat) <- LETTERS[1:2]
+Res <- traitgmyc(tr = Tree,
+                 interval = c(0, 5),
+                 trait = TraitMat,
+                 meserr = NULL,
+                 quiet = TRUE)
+plot(Res)
+
+###########################################################################
+library(phytools)
+library(phybase)
+library(phyclust)
+library(mvMORPH)
+library(splits)
+library(foreach)
+library(doParallel)
+library(TraitGMYC)
+library(Matrix)
+N <- 10
+SpeciesResult <- data.frame(Species = 1:N,
+                            Individuals = sample(2:20, N, replace = TRUE))
+SpeciesResult$Theta <- runif(N, min = 0.01, max = 0.7)
+Tree <- pbtree(b = 0.2, n = N)
+Tree <- replaceTiplabel(Tree, Newlabel = "Tip")
+# Tree$edge.length[Tree$edge[, 2] <= Ntip(Tree)] <- Tree$edge.length[Tree$edge[, 2] <= Ntip(Tree)] + 0.05
+# Tree$edge.length <- Tree$edge.length/max(nodeHeights(Tree)[, 2])
+plot(Tree)
+axisPhylo()
+
+GmycTree <- gmycSimulatedTree(Tree, SpeciesResult, Scale = FALSE)
+GmycTreePainted <- paintSpeciesBranches(GmycTree)
+
+Ntraits <- 3
+if (Ntraits > 1) {
+  SigmasSpecies <- simSigma(Ntraits)
+  Cor <- cov2cor(SigmasSpecies)
+  PopSigmaMulti <- 2
+  SigmasPopulations <- simSigma(Ntraits,
+                                Cor = Cor[lower.tri(Cor)],
+                                Sigma2 = PopSigmaMulti * sqrt(diag(SigmasSpecies)))
+
+  Sigmas <- list(Species = SigmasSpecies, Populations = SigmasPopulations)
+  SimTraits <- mvSIM(GmycTreePainted, model = "BMM",
+                     param = list(ntraits = Ntraits,
+                                  theta = rep(0, Ntraits),
+                                  sigma = Sigmas))
+
+}
+if (Ntraits == 1) {
+  SigmasSpecies <- runif(1, min = 1e-4, max = 0.2)
+  Sigmas <- list(Species = SigmasSpecies, Populations = 2*SigmasSpecies)
+  SimTraits <- mvSIM(GmycTreePainted, model = "BMM",
+                     param = list(ntraits = Ntraits,
+                                  theta = rep(0, Ntraits),
+                                  sigma = Sigmas))
+}
+SimTraits[1,1] <- NA
+colnames(SimTraits) <- LETTERS[1:Ntraits]
+
+TraitEvo <- mvBM(tree = GmycTreePainted,
+                 data = SimTraits,
+                 model = "BMM",
+                 method = "rpf",
+                 param = list(constraint = "proportional", decomp = "eigen+"),
+                 control = list(maxit = 1e6),
+                 diagnostic = FALSE,
+                 echo = FALSE)
+TraitEvo$sigma
+Sigmas # Pretty good accurracy!
+
+
+Res <- traitgmyc(tr = GmycTree,
+                 trait = SimTraits,
+                 meserr = NULL,
+                 quiet = TRUE,
+                 ncores = 4)
+plot(Res)
+
+
+X <- splits:::gmyc(tr = GmycTree,
+                   quiet = TRUE)
+splits:::plot.gmyc(X)
+

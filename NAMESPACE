@@ -1,0 +1,13 @@
+useDynLib(TraitGMYC, .registration=TRUE)
+importFrom(Rcpp, evalCpp)
+exportPattern("^[[:alpha:]]+")
+
+import(splits)
+import(mvMORPH)
+import(phytools)
+import(phybase)
+import(foreach)
+import(doParallel)
+import(Matrix)
+
+S3method(plot, traitgmyc)

@@ -1,0 +1,290 @@
+Tree <- pbtree(b = 1, n = 10)
+plot(Tree); axisPhylo()
+
+NodeTipsMeans <- simTraitsSpeciesTree(Tree = Tree,
+                                      PopSize = 100,
+                                      Ntraits = 2,
+                                      Sigma = 0.5)
+TraitEvo <- mvBM(tree = Tree,
+                 data = NodeTipsMeans[Tree$tip.label, ],
+                 model = "BM1",
+                 method = "rpf",
+                 control = list(maxit = 1e6),
+                 diagnostic = FALSE,
+                 echo = FALSE)
+TraitEvo$sigma
+
+
+
+
+
+########################################################
+
+Tree <- pbtree(b = 2, n = 10)
+plot(Tree); axisPhylo()
+MaxBt <- max(branching.times(Tree))
+
+registerDoParallel(4)
+NodeTipsMeans <- foreach(iter = 1:100,
+                         .packages = c("TraitGMYC"),
+                         .combine = cbind,
+                         .inorder = FALSE) %dopar% simTraitsMicroEvo(Tree = Tree,
+                                                                     PopSize = 1000,
+                                                                     Ntraits = 1)
+stopImplicitCluster()
+
+apply(NodeTipsMeans[-c(1:(Ntip(Tree)-1)), ], 2, var)
+
+Pop100Var <- apply(Pop100[-c(1:(Ntip(Tree)-1)), ], 2, var)
+mean(Pop100Var)
+(MaxBt * 1e6 * 0.1^2) / 100
+Pop100MacroVar <- rep(NA_real_, ncol(Pop100))
+for (i in 1:ncol(Pop100)) {
+  FitBM <- mvBM(tree = Tree,
+                data = Pop100[-c(1:(Ntip(Tree)-1)), i],
+                model = "BM1",
+                method = "pic",
+                diagnostic = FALSE,
+                echo = FALSE)$sigma
+  Pop100MacroVar[i] <- MaxBt * FitBM
+}
+plot(Pop100Var, Pop100MacroVar); abline(a = 0, b = 1, lty = 2)
+
+Pop500Var <- apply(Pop500[-c(1:(Ntip(Tree)-1)), ], 2, var)
+mean(Pop500Var)
+(MaxBt * 1e6 * 0.1^2) / 500
+Pop500MacroVar <- rep(NA_real_, ncol(Pop500))
+for (i in 1:ncol(Pop500)) {
+  FitBM <- mvBM(tree = Tree,
+                data = Pop500[-c(1:(Ntip(Tree)-1)), i],
+                model = "BM1",
+                method = "pic",
+                diagnostic = FALSE,
+                echo = FALSE)$sigma
+  Pop500MacroVar[i] <- MaxBt * FitBM
+}
+plot(Pop500Var, Pop500MacroVar); abline(a = 0, b = 1, lty = 2)
+
+PopSize <- sort(rep(c(50, 100, 250, 500, 1000), 20))
+registerDoParallel(4)
+NodeTipsMeans <- foreach(iter = 1:length(PopSize),
+                         .packages = c("TraitGMYC"),
+                         .combine = cbind,
+                         .inorder = TRUE) %dopar% simTraitsMicroEvo(Tree = Tree,
+                                                                    PopSize = PopSize[iter],
+                                                                    Ntraits = 1)
+stopImplicitCluster()
+
+NodeTipsMeans[-c(1:(Ntip(Tree)-1)), ]
+Var <- apply(NodeTipsMeans[-c(1:(Ntip(Tree)-1)), ], 2, var)
+MacroVar <- rep(NA_real_, ncol(NodeTipsMeans))
+for (i in 1:ncol(Pop500)) {
+  FitBM <- mvBM(tree = Tree,
+                data = Pop500[-c(1:(Ntip(Tree)-1)), i],
+                model = "BM1",
+                method = "pic",
+                diagnostic = FALSE,
+                echo = FALSE)$sigma
+  MacroVar[i] <- MaxBt * FitBM
+}
+plot(Var, MacroVar, col = as.factor(PopSize)); abline(a = 0, b = 1, lty = 2)
+
+MacroVar / MaxBt # sigma2
+(MaxBt * 1e6 * 0.1^2) / PopSize
+
+##################################################################################################
+
+# scp -i /home/torsten/.ssh/cloud_key /home/torsten/Work/Software/TraitGMYC_0.1.0.tar.gz \
+# ubuntu@134.176.27.233:/home/ubuntu/TaxonOmics
+# for i in {14..14}; do scp -r -i /home/ubuntu/.ssh/client /home/ubuntu/TaxonOmics/TraitGMYC_0.1.0.tar.gz c$i:/home/ubuntu/TaxonOmics/; done
+# install.packages("TraitGMYC_0.1.0.tar.gz", repos = NULL, type="source")
+# setwd("/home/ubuntu/TaxonOmics")
+
+Rep <- 6
+TreeDepth <- c(0.1, 0.5, 1, 2, 5, 10) # Rep == length(TreeDepth)
+PopSize <- sort(rep(c(50, 100, 250, 500, 1000, 5000), Rep*length(TreeDepth)))
+S2 <- rep(c(0.1, 0.25, 0.5, 1, 2, 4), Rep*length(TreeDepth))
+Trees <- rep( rep(1:length(TreeDepth), Rep), each = length(TreeDepth))
+cbind(PopSize, S2, Trees) # 1:20 h with trees of 10 species
+N <- 10
+
+Rep <- 3
+TreeDepth <- c(1, 2, 5) # Rep == length(TreeDepth)
+PopSize <- sort(rep(c(100, 500, 1000), Rep*length(TreeDepth)))
+S2 <- rep(c(0.1, 0.5, 1), Rep*length(TreeDepth))
+Trees <- rep( rep(1:length(TreeDepth), Rep), each = length(TreeDepth))
+cbind(PopSize, S2, Trees)
+N <- 10
+
+
+TreeList <- list()
+for (i in 1:length(TreeDepth)) {
+  Mu <- 0 # Extinction
+  Lambda <- (1/TreeDepth[i]) * log(N * (1 - Mu) + Mu)
+  TreeList[[i]] <- pbtree(b = Lambda, d = Mu, n = N, t = TreeDepth[i])
+}
+
+registerDoParallel(4) # Only on cluster with 14 cores!
+system.time(
+  NodeTipsMeans <- foreach(iter = 1:length(PopSize),
+                           # .packages = c("TraitGMYC"), # Not needed if not using simSigma
+                           # .combine = cbind,
+                           .inorder = TRUE) %dopar% simTraitsMicroEvo(Tree = TreeList[[Trees[iter]]],
+                                                                      PopSize = PopSize[iter],
+                                                                      Ntraits = 1,
+                                                                      Sigma = S2[iter]))
+stopImplicitCluster()
+MacroSigma2 <- rep(NA_real_, ncol(NodeTipsMeans))
+for (i in 1:ncol(NodeTipsMeans)) {
+  FitBM <- mvBM(tree = TreeList[[Trees[i]]],
+                data = NodeTipsMeans[grepl("t", rownames(NodeTipsMeans)), i, drop = FALSE],
+                model = "BM1",
+                method = "pic",
+                diagnostic = FALSE,
+                echo = FALSE)$sigma
+  MacroSigma2[i] <- FitBM
+}
+plot(S2 + rnorm(length(S2), 0, 0.01), MacroSigma2,
+     col = as.factor(PopSize), pch = Trees,
+     xlab = "MacroSim", ylab = "MacroEst")
+abline(a = 0, b = 1, lty = 2, col = "grey")
+
+# pch
+# 1: circle
+# 2: triangle
+# 3: plus
+# 4: x
+# 5: rhombus
+plot(S2 + rnorm(length(S2), 0, 0.05),
+     (MacroSigma2 - S2) / S2,
+     col = as.factor(PopSize), pch = Trees,
+     xlab = "MacroSim", ylab = "MacroEst")
+abline(h = 0, lty = 2, col = "grey")
+
+################################
+# Multivariate trait evolution #
+################################
+TreeDepth <- c(1, 2) # Rep == length(TreeDepth)
+PopSize <- c(50)
+S2 <- c(0.1, 0.5, 1)
+Cor <- c(-0.7)
+Trees <- 1:length(TreeDepth)
+Comb <- expand.grid(PopSize, S2, Cor, Trees)
+N <- 10
+
+TreeList <- list()
+for (i in 1:length(TreeDepth)) {
+  Mu <- 0 # Extinction
+  Lambda <- (1/TreeDepth[i]) * log(N * (1 - Mu) + Mu)
+  TreeList[[i]] <- pbtree(b = Lambda, d = Mu, n = N, t = TreeDepth[i])
+}
+
+Ntraits <- 4
+registerDoParallel(4) # Only on cluster with 14 cores!
+system.time(
+  NodeTipsMeans <- foreach(iter = 1:nrow(Comb),
+                           .packages = c("TraitGMYC"), # Needed if not using simSigma
+                           # .combine = cbind,
+                           .inorder = TRUE) %dopar% simTraitsMicroEvo(Tree = TreeList[[Comb[iter, 4]]],
+                                                                      PopSize = Comb[iter,1],
+                                                                      Ntraits = Ntraits,
+                                                                      Sigma = Comb[iter, 2],
+                                                                      Cor = Comb[iter, 3]))
+stopImplicitCluster()
+# MacroSigma2 <- matrix(NA_real_, nrow = nrow(Comb), ncol = Ntraits)
+Macro <- matrix(NA_real_, nrow = nrow(Comb), ncol = 2)
+for (i in 1:nrow(Comb)) {
+  Const <- matrix(2, 4, 4)
+  diag(Const) <- 1
+  Param <- list(constraint = Const, decomp = "eigen+")
+  # Param <- list(constraint = "equal")
+  Data <- NodeTipsMeans[[i]]
+  Data <- Data[(nrow(Data) - N + 1):nrow(Data), ]
+  FitBM <- mvBM(tree = TreeList[[Comb[i, 4]]],
+                data = Data ,
+                model = "BM1",
+                method = "pic",
+                # param = Param,
+                # optimization = "subplex",
+                diagnostic = FALSE,
+                echo = FALSE)$sigma
+  Macro[i, 1] <- diag(FitBM)[1]
+  Macro[i, 2] <- cov2cor(FitBM)[1, 2]
+}
+plot(Comb[, 2] + rnorm(length(Comb[, 2]), 0, 0.01),
+     Macro[, 1],
+     col = as.factor(Comb[, 1]), # PopSize
+     pch = Comb[, 4], # Trees
+     xlab = "Sigma2Sim", ylab = "Sigma2Est")
+abline(a = 0, b = 1, lty = 2, col = "grey")
+
+plot(Comb[, 3] + rnorm(length(Comb[, 3]), 0, 0.01),
+     Macro[, 2],
+     col = as.factor(Comb[, 1]),
+     pch = Comb[, 4],
+     xlab = "CorSim", ylab = "CorEst")
+abline(a = 0, b = 1, lty = 2, col = "grey")
+
+########################################################
+N <- 10
+Tree <- pbtree(b = 3, n = N)
+plot(Tree); axisPhylo()
+
+Ntraits <- 4
+registerDoParallel(4) # Only on cluster with 14 cores!
+system.time(
+  NodeTipsMeans <- foreach(iter = 1:50,
+                           .packages = c("TraitGMYC"), # Needed if not using simSigma
+                           .inorder = TRUE) %dopar% simTraitsMicroEvo(Tree = Tree,
+                                                                      PopSize = 100,
+                                                                      Ntraits = Ntraits,
+                                                                      Sigma = 0.5,
+                                                                      Cor = 0.5))
+stopImplicitCluster()
+
+V <- unlist(lapply(NodeTipsMeans, function(x) x[(nrow(x) - N + 1):nrow(x), ]))
+hist(V)
+var(V)
+mean(V)
+
+S2 <- simSigma(Ntraits, Cor = 0.5, Sigma2 = 0.5)
+MacroSim <- mvSIM(Tree, nsim = 1000, model = "BM1",
+                  param = list(sigma = S2, theta = rep(0, Ntraits)))
+M <- unlist(MacroSim)
+hist(M)
+var(M)
+mean(M)
+
+########################################################
+# variance in traits at tip = tree-depth x sigma2
+TreeSim <- pbtree(b = 3, n = 100)
+plot(TreeSim); axisPhylo()
+s2 <- 0.2
+MacroSim <- mvSIM(TreeSim, nsim = 1000, model = "BM1",
+                  param = list(sigma = s2, theta = 0))
+Expectation <- max(branching.times(TreeSim)) * s2
+Expectation
+hist(apply(MacroSim, 2, var)); abline(v = Expectation)
+var(c(MacroSim))
+
+# Individual based evolution
+# Variance in traits = (Time * sqrt(Sigma)) / PopSize
+Mus <- rep(NA, 1000)
+PopSize <- 1000
+Time <- 10000
+for (i in 1:length(Mus)) {
+  Mu <- 0
+  for (tt in 1:Time) {
+    Sd <- 0.123
+    Var <- Sd^2 # Which is variance!
+    # Traits <- mvrnorm(n = PopSize, mu = Mu, Sigma = Var)
+    Traits <- as.matrix(rnorm(n = PopSize, mean = Mu, sd = sqrt(Var)), ncol = 1)
+    Mu <- colMeans(Traits)
+  }
+  Mus[i] <- Mu
+}
+hist(Mus)
+var(Mus)
+
+(Time * Var) / PopSize # ~ var(Mus)
+
