@@ -9,7 +9,11 @@
 #' @param Scenario Scenario of Fujisawa and Barraclough (2013)
 #' * A Null model assuming a neutral coalescent process in a single population
 #' * B Diversification (coalescence within a species tree)
-#' * D Fluctuating population sizes
+#' * D1 Fluctuating population size; bottleneck and then exponential growth
+#' * D2 Fluctuating population size; instant growth then shrink
+#' * E Diversification with different sized populations
+#' * F1 Random sample of individuals per species
+#' * F2 Random sample of individuals per species, with sampling propabilities proportional to population sizes
 #' @param Ind Individuals per species.
 #' Either a vector of length 1 (i.e. same number of individuals per species) or
 #' of the same length as Ntip(SpeciesTree)
@@ -75,10 +79,16 @@ simGenealogy <- function (Species = 30,
   else {
     Species <- as.multiPhylo(Species)
     TipsSpecies <- Ntip(Species[[1]])
+    if (length(Species) == 1) {
+      Species <- rep(Species, Nsim)
+    }
   }
   LenInd <- length(Ind)
   if (LenInd != 1 && LenInd != TipsSpecies) {
     stop("Number of individuals should be the same for all species or\na vector with a length equal to the number of species")
+  }
+  if (LenInd != 1 && Scenario %in% c("F1", "F2")) {
+    stop("Only one value for the number of individuals required for scenarios F1 and F2")
   }
   Ind <- rep(Ind, (TipsSpecies * (LenInd != TipsSpecies) + (LenInd == TipsSpecies)) )
   N <- sum(Ind)
@@ -89,15 +99,74 @@ simGenealogy <- function (Species = 30,
   if (Scenario == "A") {
     MsOut <- ms(N, Nsim, opts = "-T")
     CoalTree <- read.tree(text = MsOut)
+    CoalTree <- as.multiPhylo(CoalTree)
   }
-  if (Scenario %in% c("B", "C1", "C2")) {
+  if (Scenario %in% c("B", "C1", "C2", "D1", "D2", "E", "F1", "F2")) {
     for (i in 1:Nsim) {
+      Ne <- PopSize[i]
       Tree <- Species[[i]]
+      TipsSpecies <- Ntip(Tree)
       TreeDepth <- max(branching.times(Tree))
       # Fujisawa & Barraclough scale to depth of 10000000 generations ~ 10 Ma
       # Scale to million years
       Tree$edge.length <- Tree$edge.length * 1e6
-      Tree$edge.length <- Tree$edge.length/(4 * PopSize)
+      if (Scenario %in% c("B", "C1", "C2", "F1")) {
+        Tree$edge.length <- Tree$edge.length/(4 * Ne)
+      }
+      if (Scenario %in% c("D1", "D2")) {
+        ##tenfold growth = 10
+        ProGrowth <- 10
+        ##time at which change started
+        ##pick half way since penultimate branching event - ultimate branching event is very recent because of simulation
+        TGrowth <- sort(branching.times(Tree))[2] / 2
+        ##growth rate to ensure tenfold change in population size over time period
+        Alpha <- log(ProGrowth)/TGrowth
+        M <- 1
+        if (Scenario == "D2") {
+          M <- -1
+        }
+        Alpha <- Alpha * M
+        ##choose N0 to make harmonic mean = PopSize
+        N0 <- optimize(optimFunction, interval = c(0, 10^50),
+                       Alpha = Alpha, TGrowth = TGrowth,
+                       PopSize = Ne)$minimum
+        ##scale branch lengths and time for change in growth by new N0
+        Tree$edge.length <- Tree$edge.length / (4 * N0)
+        TGrowth <- TGrowth / (4 * N0)
+        ##growth rate to ensure tenfold change in population size over time period
+        Alpha <- log(ProGrowth) / TGrowth
+        Alpha <- Alpha * M
+      }
+      if (Scenario %in% c("E", "F2")) {
+        Ne <- round(10^(log10(Ne) - 0.5 * log(10)), 0)
+        NePops <- round(10^rnorm(TipsSpecies, log10(Ne), 1), 0)
+        Tree$edge.length <- Tree$edge.length / (4 * NePops[1])
+        ScaleNePops <- NePops[1]
+        NePops <- NePops / ScaleNePops
+      }
+      if (Scenario %in% c("F1", "F2")) {
+        Samps <- NULL
+        if (Scenario == "F1") {
+          ProbSamps <- rep(Ne, 30)
+        }
+        else {
+          ProbSamps <- NePops * ScaleNePops
+        }
+        for (j in 1:N) {
+          Tmp <- sample(1:TipsSpecies, 1, prob = ProbSamps)
+          Samps <- c(Samps, Tmp)
+          ProbSamps[Tmp] <- ProbSamps[Tmp]-1
+        }
+        Ind <- rep(0, TipsSpecies)
+        TableSamps <- table(Samps)
+        Ind[as.integer(names(TableSamps))] <- as.vector(TableSamps)
+        if (min(Ind) == 0) {
+          Tree <- drop.tip(Tree, which(Ind == 0))
+          Tree$tip.label <- 1:length(Tree$tip.label)
+          Ind <- Ind[Ind > 0]
+          TipsSpecies <- length(Ind)
+        }
+      }
       NumNode <- Tree$Nnode
       des <- matrix(NA, nrow = NumNode, ncol = 3)
       des[, 1] <- branching.times(Tree)
@@ -120,7 +189,16 @@ simGenealogy <- function (Species = 30,
       Opts <- paste(Opts, paste(Ind, collapse = " "), collapse = " ")
       Ej <- paste(apply(des, 1, function(x) paste("-ej", paste(x, collapse = " "), collapse = " ")),
                   collapse = " ")
-      Opts <- paste(Opts, Ej, "-T", collapse = " ")
+      Opts <- paste(Opts, Ej, collapse = " ")
+      if (Scenario %in% c("D1", "D2")) {
+        Add <- paste("-G", Alpha, "-eN", TGrowth, Ne/N0)
+        Opts <- paste(Opts, Add, collapse = " ")
+      }
+      if (Scenario %in% c("E")) {
+        Add <- paste(sapply(2:TipsSpecies, function(x) paste("-n", x, NePops[x])), collapse = " ")
+        Opts <- paste(Opts, Add, collapse = " ")
+      }
+      Opts <- paste(Opts, "-T", collapse = " ")
       MsOut <- ms(N, 1, opts = Opts)
       CoalTree[[i]] <- read.tree(text = MsOut)
       CoalTree[[i]]$edge.length <- CoalTree[[i]]$edge.length / max(branching.times(CoalTree[[i]])) * TreeDepth
