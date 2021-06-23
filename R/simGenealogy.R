@@ -59,7 +59,7 @@
 #'                          Scenario = "A",
 #'                          Ind = 5,
 #'                          PopSize = 10000)
-#' plot(GeneTree, cex = 0.4)
+#' plot(GeneTree$Genealogy, cex = 0.4)
 #' 
 #' # Scenario B
 #' SpeciesTree <- pbtree(b = 0.27, n = 30)
@@ -67,7 +67,7 @@
 #'                          Scenario = "B",
 #'                          Ind = 5,
 #'                          PopSize = 10000)
-#' plot(GeneTree, cex = 0.4)
+#' plot(GeneTree$Genealogy, cex = 0.4)
 #'
 #' # Scenario C1
 #' FullTree <- pbtree(b = 0.27, n = 50)
@@ -76,7 +76,7 @@
 #'                          Scenario = "C1",
 #'                          Ind = 5,
 #'                          PopSize = 10000)
-#' plot(GeneTree, cex = 0.4)
+#' plot(GeneTree$Genealogy, cex = 0.4)
 #' # Scenario F2 with two simulation runs
 #' # Simulating two genealogies for the same species tree 
 #' # and with the same random number of individuals and 
