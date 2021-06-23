@@ -5,7 +5,7 @@
 #'
 #' @param Species The species tree within the gene trees should be simulated
 #' for Scenarios B-G. In case of Scenario A the number of species.
-#' If Nsim > 1 there should be multiphylo
+#' If Nsim > 1 there should be multiphylo with the same number of species per tree
 #' @param Scenario Scenario of Fujisawa and Barraclough (2013)
 #' * A Null model assuming a neutral coalescent process in a single population
 #' * B Diversification (coalescence within a species tree)
@@ -14,6 +14,7 @@
 #' * E Diversification with different sized populations
 #' * F1 Random sample of individuals per species
 #' * F2 Random sample of individuals per species, with sampling propabilities proportional to population sizes
+#' * G Geographic structure 
 #' @param Ind Individuals per species.
 #' Either a vector of length 1 (i.e. same number of individuals per species) or
 #' of the same length as Ntip(SpeciesTree)
@@ -22,6 +23,8 @@
 #' Either a vector of length 1 or of the same length as Nsim.
 #' @param Nsim Number of simulated genealogies
 #' @param Scale Scale depth of genealogy to this value (e.g. 1)
+#' @param SameInd Only important for Scenario F: Should the same random number of individuals be used for all Nsim? Default TRUE
+#' @param SamePop Only important for Scenario E: Should the same random population sizes be used for all Nsim? Default TRUE
 #' @md
 #'
 #' @details Scenarios C1 and C2 of incomplete taxon sampling or
@@ -33,8 +36,15 @@
 #' @author Torsten Hauffe but most of the code was forked
 #' from Fujisawa and Barraclough (2013)
 #'
-#' @return A genealogy, which for scenarios B-G is simulated
-#' within the provided species tree.
+#' @return A list with up to three elements. 
+#' * Genealogy Genealogies, which for scenarios B-G are simulated within the provided species tree.
+#' The genealogy is of class multiphylo with Nsim genealogies.
+#' *  Species data.frame with the number of individuals and population sizes per species.
+#' *  PopFluc data.frame with parameters for fluctuating population size (Only for scenarios D1 and D2 of fluctuating population sizes). 
+#' G: Growth rate of all subpopulations.
+#' T: Half the age of the penultimate diversification event where an instantaneous change in population size too place.
+#' Ne: Subpopulation's size before T.
+#' N0: Subpopulation's size before T.
 #'
 #' @references Fujisawa, T. and T. Barraclough (2013): Delimiting species using
 #' single-locus data and the Generalized Mixed Yule Coalescent approach:
@@ -50,6 +60,7 @@
 #'                          Ind = 5,
 #'                          PopSize = 10000)
 #' plot(GeneTree, cex = 0.4)
+#' 
 #' # Scenario B
 #' SpeciesTree <- pbtree(b = 0.27, n = 30)
 #' GeneTree <- simGenealogy(Species = SpeciesTree,
@@ -66,13 +77,38 @@
 #'                          Ind = 5,
 #'                          PopSize = 10000)
 #' plot(GeneTree, cex = 0.4)
-#' # Scenario C2
+#' # Scenario F2 with two simulation runs
+#' # Simulating two genealogies for the same species tree 
+#' # and with the same random number of individuals and 
+#' # population sizes per species per simulation run
+#' SpeciesTree <- pbtree(b = 0.27, n = 30)
+#' GeneTree <- simGenealogy(Species = SpeciesTree,
+#'                          Scenario = "F2",
+#'                          Ind = 5,
+#'                          PopSize = 10000,
+#'                          Nsim = 2)
+#' GeneTree$Species
+#' # Simulating two genealogies for the same species tree 
+#' # but with a different random number of individuals and 
+#' # population sizes per species per simulation run
+#' SpeciesTree <- pbtree(b = 0.27, n = 30)
+#' GeneTree <- simGenealogy(Species = SpeciesTree,
+#'                          Scenario = "F2",
+#'                          Ind = 5,
+#'                          PopSize = 10000,
+#'                          Nsim = 2,
+#'                          SameInd = FALSE,
+#'                          SamePop = FALSE)
+#' GeneTree$Species
+#'                            
 simGenealogy <- function (Species = 30,
                           Scenario = "A",
                           Ind = 5,
                           PopSize = 10000,
                           Nsim = 1,
-                          Scale = NULL) {
+                          Scale = NULL,
+                          SameInd = TRUE,
+                          SamePop = TRUE) {
   if (class(Species) == "numeric") {
     TipsSpecies <- Species[[1]]
   }
@@ -90,18 +126,31 @@ simGenealogy <- function (Species = 30,
   if (LenInd != 1 && Scenario %in% c("F1", "F2")) {
     stop("Only one value for the number of individuals required for scenarios F1 and F2")
   }
+  if (Nsim > 1 && Scenario == "F2" && !(SameInd == SamePop)) {
+    stop("In Scenario F2 the number of individual and subpopulation sizes should be either the same for all simulation runs or both should differ.")
+  }
   Ind <- rep(Ind, (TipsSpecies * (LenInd != TipsSpecies) + (LenInd == TipsSpecies)) )
+  names(Ind) <- Species[[1]]$tip.label
   N <- sum(Ind)
   if (length(PopSize) == 1) {
     PopSize <- rep(PopSize, Nsim)
   }
-  CoalTree <- vector(mode = "list", length = length(Species))
+  CoalTree <- vector(mode = "list", length = Nsim)
+  SpSummary <- as.data.frame(matrix(0, nrow = TipsSpecies, ncol = 2 * Nsim))
+  rownames(SpSummary) <- Species[[1]]$tip.label
+  colnames(SpSummary) <- c(sapply(1:Nsim, function(x) c(paste0("Sim", x, "_Ind"),
+                                                        paste0("Sim", x, "_PopSize"))))
+  PopFlucPar <- as.data.frame(matrix(NA_real_, nrow = 4, ncol = Nsim))
+  rownames(PopFlucPar) <- c("G", "T", "Ne", "N0")
+  colnames(PopFlucPar) <- paste0("Sim", 1:Nsim)
   if (Scenario == "A") {
     MsOut <- ms(N, Nsim, opts = "-T")
     CoalTree <- read.tree(text = MsOut)
     CoalTree <- as.multiPhylo(CoalTree)
+    SpSummary[, seq(1, 2*Nsim, by = 2)] <- Ind
+    SpSummary[, seq(2, 2*Nsim, by = 2)] <- PopSize
   }
-  if (Scenario %in% c("B", "C1", "C2", "D1", "D2", "E", "F1", "F2")) {
+  else {
     for (i in 1:Nsim) {
       Ne <- PopSize[i]
       Tree <- Species[[i]]
@@ -110,6 +159,36 @@ simGenealogy <- function (Species = 30,
       # Fujisawa & Barraclough scale to depth of 10000000 generations ~ 10 Ma
       # Scale to million years
       Tree$edge.length <- Tree$edge.length * 1e6
+      if (Scenario == "G") {
+        NeSr <- Ne/2
+        Tree$edge.length <- Tree$edge.length/(4 * NeSr)
+        NumtipSr <- TipsSpecies
+        NumBranch <- nrow(Tree$edge)
+        for (j in 1:NumBranch) {
+          if (Tree$edge[j, 2] <= NumtipSr) {
+            ##divide into two populations halfway along species branch
+            Tree$edge.length[j] <- Tree$edge.length[j]/2
+            Idx <- Tree$edge > NumtipSr
+            Tree$edge[Idx] <- Tree$edge[Idx] + 1
+            Tree$edge <- rbind(Tree$edge,
+                               c(max(Tree$edge) + 1, Tree$edge[j, 2]),
+                               c(max(Tree$edge) + 1, NumtipSr + 1))
+            Tree$edge[j, 2] <- max(Tree$edge)
+            NumtipSr <- NumtipSr + 1
+            Tree$edge.length <- c(Tree$edge.length,
+                                  Tree$edge.length[j],
+                                  Tree$edge.length[j])
+            Tree$tip.label <- c(Tree$tip.label, as.character(NumtipSr))
+            Tree$Nnode <- Tree$Nnode + 1
+          }
+        }
+        TipsSpecies <- Ntip(Tree)
+        # numnod <- Tree$Nnode
+        numspec <- TipsSpecies
+        # numsamp <- 2.5
+        Nem <- runif(1,0.0,1)
+        # record.Nem[trs]<-Nem
+      }
       if (Scenario %in% c("B", "C1", "C2", "F1")) {
         Tree$edge.length <- Tree$edge.length/(4 * Ne)
       }
@@ -119,6 +198,7 @@ simGenealogy <- function (Species = 30,
         ##time at which change started
         ##pick half way since penultimate branching event - ultimate branching event is very recent because of simulation
         TGrowth <- sort(branching.times(Tree))[2] / 2
+        PopFlucPar[2, i] <- TGrowth / 1e6
         ##growth rate to ensure tenfold change in population size over time period
         Alpha <- log(ProGrowth)/TGrowth
         M <- 1
@@ -136,36 +216,45 @@ simGenealogy <- function (Species = 30,
         ##growth rate to ensure tenfold change in population size over time period
         Alpha <- log(ProGrowth) / TGrowth
         Alpha <- Alpha * M
+        PopFlucPar[1, i] <- Alpha
       }
       if (Scenario %in% c("E", "F2")) {
-        Ne <- round(10^(log10(Ne) - 0.5 * log(10)), 0)
-        NePops <- round(10^rnorm(TipsSpecies, log10(Ne), 1), 0)
+        if (i == 1 || !SamePop) {
+          Ne <- round(10^(log10(Ne) - 0.5 * log(10)), 0)
+          NePopsSim1 <- round(10^rnorm(TipsSpecies, log10(Ne), 1), 0)
+        }
+        SpSummary[, (i-1)*2 + 2] <- NePopsSim1
+        NePops <- NePopsSim1
         Tree$edge.length <- Tree$edge.length / (4 * NePops[1])
         ScaleNePops <- NePops[1]
         NePops <- NePops / ScaleNePops
       }
       if (Scenario %in% c("F1", "F2")) {
-        Samps <- NULL
         if (Scenario == "F1") {
-          ProbSamps <- rep(Ne, 30)
+          ProbSamps <- rep(Ne, TipsSpecies)
         }
         else {
           ProbSamps <- NePops * ScaleNePops
         }
-        for (j in 1:N) {
-          Tmp <- sample(1:TipsSpecies, 1, prob = ProbSamps)
-          Samps <- c(Samps, Tmp)
-          ProbSamps[Tmp] <- ProbSamps[Tmp]-1
+        if (i == 1 || !SameInd) {
+          Samps <- NULL
+          for (j in 1:N) {
+            Tmp <- sample(1:TipsSpecies, 1, prob = ProbSamps)
+            Samps <- c(Samps, Tmp)
+            ProbSamps[Tmp] <- ProbSamps[Tmp]-1
+          }
+          Ind <- rep(0, TipsSpecies)
+          TableSamps <- table(Samps)
+          Ind[as.integer(names(TableSamps))] <- as.vector(TableSamps)
+          names(Ind) <- rownames(SpSummary)
         }
-        Ind <- rep(0, TipsSpecies)
-        TableSamps <- table(Samps)
-        Ind[as.integer(names(TableSamps))] <- as.vector(TableSamps)
         if (min(Ind) == 0) {
           Tree <- drop.tip(Tree, which(Ind == 0))
           Tree$tip.label <- 1:length(Tree$tip.label)
           Ind <- Ind[Ind > 0]
           TipsSpecies <- length(Ind)
         }
+        SpSummary[, (i-1)*2 + 2] <- ProbSamps # Check that all species are present!
       }
       NumNode <- Tree$Nnode
       des <- matrix(NA, nrow = NumNode, ncol = 3)
@@ -186,11 +275,27 @@ simGenealogy <- function (Species = 30,
       }
       # Fujisawa & Barraclough without Theta: -t 4*Ne*mu
       Opts <- paste("-I", TipsSpecies, collapse = " ")
-      Opts <- paste(Opts, paste(Ind, collapse = " "), collapse = " ")
+      if (Scenario != "G") {
+        Opts <- paste(Opts, paste(Ind, collapse = " "), collapse = " ")
+      }
+      else {
+        Migr <- matrix(Tree$edge[Tree$edge[, 2]<= TipsSpecies, 2], ncol = 2, byrow = TRUE)
+        Migr <- cbind(Migr, rep(4*Nem, nrow(Migr)))
+        N1 <- round(Ind[1] / (5/3))
+        N2 <- Ind[1] - N1
+        Add <- paste(c(rep(N1, times = TipsSpecies/2),
+                       rep(N2, times = TipsSpecies/2)), collapse = " ") # Ind!
+        Opts <- paste(Opts, Add, collapse = " ")
+        Add <- apply(Migr, 1, function(x) paste(c("-m", x, "-m", x[c(2, 1, 3)]), collapse = " "))
+        Add <- paste(Add, collapse = " ")
+        Opts <- paste(Opts, Add, collapse = " ")
+      }
       Ej <- paste(apply(des, 1, function(x) paste("-ej", paste(x, collapse = " "), collapse = " ")),
                   collapse = " ")
       Opts <- paste(Opts, Ej, collapse = " ")
       if (Scenario %in% c("D1", "D2")) {
+        PopFlucPar[3, i] <- ifelse(M == -1, N0 * ProGrowth, N0 / ProGrowth)
+        PopFlucPar[4, i] <- N0
         Add <- paste("-G", Alpha, "-eN", TGrowth, Ne/N0)
         Opts <- paste(Opts, Add, collapse = " ")
       }
@@ -202,12 +307,31 @@ simGenealogy <- function (Species = 30,
       MsOut <- ms(N, 1, opts = Opts)
       CoalTree[[i]] <- read.tree(text = MsOut)
       CoalTree[[i]]$edge.length <- CoalTree[[i]]$edge.length / max(branching.times(CoalTree[[i]])) * TreeDepth
+      SpSummary[names(Ind), (i-1)*2 + 1] <- Ind
+      if (!Scenario %in% c("E", "F1", "F2")) {
+        SpSummary[, (i-1)*2 + 2] <- PopSize[i]
+      }
     }
   }
-  NewTipLabels <- sapply(1:TipsSpecies,
-                         function(x) paste0(paste0("Tip", x, "."), 1:Ind[x]),
-                         simplify = FALSE)
-  NewTipLabels <- unlist(NewTipLabels)
+  if (Scenario %in% c("A", "B", "C1", "C2", "D1", "D2", "E", "F1", "F2")) {
+    # NewTipLabels <- sapply(1:TipsSpecies,
+    #                        function(x) paste0(paste0("Tip", x, "."), 1:Ind[x]),
+    #                        simplify = FALSE)
+    NewTipLabels <- sapply(1:TipsSpecies,
+                           function(x) paste0(paste0(rownames(SpSummary)[x], "."), 1:Ind[x]),
+                           simplify = FALSE)
+    NewTipLabels <- unlist(NewTipLabels)
+  }
+  if (Scenario %in% c("G")) {
+    R <- TipsSpecies/2
+    NewTipLabels <- paste(rep(rownames(SpSummary), each = N1),
+                          paste(".", rep(1:N1, times = R),sep = ""),
+                          sep = "")
+    NewTipLabels <- c(NewTipLabels,
+                      paste(rep(rownames(SpSummary), each = N2),
+                            paste(".", rep((N1 + 1):(N1 + N2), times = R), sep = ""),
+                            sep = ""))
+  }
   for (i in 1:length(CoalTree)) {
     Ord <- as.numeric(unlist(lapply(strsplit(CoalTree[[i]]$tip.label, "s"),
                                     function(x) x[2])))
@@ -220,5 +344,14 @@ simGenealogy <- function (Species = 30,
   if (length(CoalTree) == 1) {
     CoalTree <- CoalTree[[1]]
   }
-  return(CoalTree)
+  Res <- list()
+  Res[[1]] <- CoalTree
+  names(Res)[1] <- "Genealogy"
+  Res[[2]] <- SpSummary
+  names(Res)[2] <- "Species"
+  if (Scenario %in% c("D1", "D2")) {
+    Res[[3]] <- PopFlucPar
+    names(Res)[3] <- "PopFluc"
+  }
+  return(Res)
 }

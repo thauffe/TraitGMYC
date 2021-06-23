@@ -10,19 +10,26 @@ simGenealogy(
   Ind = 5,
   PopSize = 10000,
   Nsim = 1,
-  Scale = NULL
+  Scale = NULL,
+  SameInd = TRUE,
+  SamePop = TRUE
 )
 }
 \arguments{
 \item{Species}{The species tree within the gene trees should be simulated
 for Scenarios B-G. In case of Scenario A the number of species.
-If Nsim > 1 there should be multiphylo}
+If Nsim > 1 there should be multiphylo with the same number of species per tree}
 
 \item{Scenario}{Scenario of Fujisawa and Barraclough (2013)
 \itemize{
 \item A Null model assuming a neutral coalescent process in a single population
 \item B Diversification (coalescence within a species tree)
-\item D Fluctuating population sizes
+\item D1 Fluctuating population size; bottleneck and then exponential growth
+\item D2 Fluctuating population size; instant growth then shrink
+\item E Diversification with different sized populations
+\item F1 Random sample of individuals per species
+\item F2 Random sample of individuals per species, with sampling propabilities proportional to population sizes
+\item G Geographic structure
 }}
 
 \item{Ind}{Individuals per species.
@@ -36,10 +43,23 @@ Either a vector of length 1 or of the same length as Nsim.}
 \item{Nsim}{Number of simulated genealogies}
 
 \item{Scale}{Scale depth of genealogy to this value (e.g. 1)}
+
+\item{SameInd}{Only important for Scenario F: Should the same random number of individuals be used for all Nsim? Default TRUE}
+
+\item{SamePop}{Only important for Scenario E: Should the same random population sizes be used for all Nsim? Default TRUE}
 }
 \value{
-A genealogy, which for scenarios B-G is simulated
-within the provided species tree.
+A list with up to three elements.
+\itemize{
+\item Genealogy Genealogies, which for scenarios B-G are simulated within the provided species tree.
+The genealogy is of class multiphylo with Nsim genealogies.
+\item Species data.frame with the number of individuals and population sizes per species.
+\item PopFluc data.frame with parameters for fluctuating population size (Only for scenarios D1 and D2 of fluctuating population sizes).
+G: Growth rate of all subpopulations.
+T: Half the age of the penultimate diversification event where an instantaneous change in population size too place.
+Ne: Subpopulation's size before T.
+N0: Subpopulation's size before T.
+}
 }
 \description{
 This function simulates genealogies
@@ -59,6 +79,7 @@ GeneTree <- simGenealogy(Species = 30,
                          Ind = 5,
                          PopSize = 10000)
 plot(GeneTree, cex = 0.4)
+
 # Scenario B
 SpeciesTree <- pbtree(b = 0.27, n = 30)
 GeneTree <- simGenealogy(Species = SpeciesTree,
@@ -75,7 +96,30 @@ GeneTree <- simGenealogy(Species = SpeciesTree,
                          Ind = 5,
                          PopSize = 10000)
 plot(GeneTree, cex = 0.4)
-# Scenario C2
+# Scenario F2 with two simulation runs
+# Simulating two genealogies for the same species tree 
+# and with the same random number of individuals and 
+# population sizes per species per simulation run
+SpeciesTree <- pbtree(b = 0.27, n = 30)
+GeneTree <- simGenealogy(Species = SpeciesTree,
+                         Scenario = "F2",
+                         Ind = 5,
+                         PopSize = 10000,
+                         Nsim = 2)
+GeneTree$Species
+# Simulating two genealogies for the same species tree 
+# but with a different random number of individuals and 
+# population sizes per species per simulation run
+SpeciesTree <- pbtree(b = 0.27, n = 30)
+GeneTree <- simGenealogy(Species = SpeciesTree,
+                         Scenario = "F2",
+                         Ind = 5,
+                         PopSize = 10000,
+                         Nsim = 2,
+                         SameInd = FALSE,
+                         SamePop = FALSE)
+GeneTree$Species
+                           
 }
 \references{
 Fujisawa, T. and T. Barraclough (2013): Delimiting species using
