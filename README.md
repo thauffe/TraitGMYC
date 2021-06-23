@@ -16,5 +16,5 @@ remotes::install_github("bomeara/phybase")
 Install TraitGMYC from github.
 ```{r, warning = F, echo = F}
 library(remotes)
-remotes::install_github("bomeara/phybase")
+remotes::install_github("thauffe/TraitGMYC")
 ```
