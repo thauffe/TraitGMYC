@@ -4,37 +4,14 @@ simTraitsMicroEvo <- function (Tree,
                                GenLength = 1,
                                Sigma2 = NULL,
                                Cor = NULL) {
+  Sigma <- simSigma(Ntraits, Cor = Cor, Sigma2 = Sigma2)
   if (Ntraits > 1) {
-    SigmaOK <- FALSE
     Tol <- 1e-6
-    while (!SigmaOK) {
-      # MacroSigma <- runif(Ntraits, 0, 0.2)
-      # Sigma <- ( sqrt(MacroSigma) / sqrt(PopSize) )^2
-      # Sigma <- (Sigma * PopSize) / (1e6/GenLength) # Gives standard deviation
-      Sigma <- simSigma(Ntraits, Cor = Cor, Sigma2 = Sigma2)
-      eS <- eigen(Sigma, symmetric = TRUE)
-      ev <- eS$values
-      if ( all( ev >= -Tol * abs(ev[1L]) ) ) {
-        SigmaOK <- TRUE
-      }
-      else {
-        Sigma <- as.matrix(nearPD(Sigma)$mat)
-        SigmaOK <- TRUE
-      }
+    eS <- eigen(Sigma, symmetric = TRUE)
+    ev <- eS$values
+    if ( !all( ev >= -Tol * abs(ev[1L]) ) ) {
+      Sigma <- as.matrix(nearPD(Sigma)$mat)
     }
-  }
-  else {
-    # The Brownian motion rate (which is the Variance in Traits after time equaö to tree depth!):
-    # MacroSigma <- 0.5#runif(1, 0, 0.2)
-    # MacroSigma <- Sigma
-    # Sigma <- ( sqrt(MacroSigma) / sqrt(PopSize) )^2 # identical MacroSigma / PopSize
-    # MaxBt <- max(branching.times(Tree))
-    # Sigma <- MacroSigma #/ PopSize
-    # Sigma <- Sigma^2
-    # Sigma <- 0.1^2
-    # Sigma <- (MacroSigma * PopSize) / (MaxBt * (1e6/GenLength)) # Gives standard deviation
-    # Sigma <- Sigma
-    Sigma <- as.matrix(Sigma)
   }
   MaxBt <- max(branching.times(Tree))
   Sigma <- (Sigma * PopSize) / (1e6/GenLength) # Gives standard deviation
@@ -62,9 +39,9 @@ simTraitsMicroEvo <- function (Tree,
       Mu <- c(Mu)
     }
     NodeTipsMeans[rownames(NodeTipsMeans) == FromTo[2], ] <- Mu
-    print(i)
   }
   W <- match(1:Ntip(Tree), NodeTips)
   rownames(NodeTipsMeans)[W] <- Tree$tip.label
+  NodeTipsMeans <- NodeTipsMeans[-c(1:(Ntip(Tree)-1)), , drop = FALSE]
   return(NodeTipsMeans)
 }

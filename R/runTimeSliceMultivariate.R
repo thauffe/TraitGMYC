@@ -37,7 +37,7 @@ fitTraitEvolution <- function (ThresholdTime,
   }
   Param <- NULL
   if (ncol(trait) > 1) {
-    Param <- list(constraint = "proportional", decomp = "eigen+")
+    Param <- list(constraint = "proportional", decomp = "spherical")
   }
   TraitEvo <- tryCatch(mvBM(tree = TreeSimmap,
                             data = trait, error = meserr,
@@ -73,6 +73,7 @@ runTimeSliceMultivariate <- function (gmycResults,
                                       quiet = TRUE,
                                       ncores = 1) {
   N <- length(gmycResults$threshold.time)
+  Ntraits <- ncol(trait)
   OutputMat <- as.data.frame(matrix(NA_real_,
                                     nrow = N,
                                     ncol = 2 + Ntraits + 2*Ntraits*Ntraits))

@@ -13,7 +13,7 @@
 #' * D2 Fluctuating population size; instant growth then shrink
 #' * E Diversification with different sized populations
 #' * F1 Random sample of individuals per species
-#' * F2 Random sample of individuals per species, with sampling propabilities proportional to population sizes
+#' * F2 Random sample of individuals per species, with sampling probabilities proportional to population sizes
 #' * G Geographic structure 
 #' @param Ind Individuals per species.
 #' Either a vector of length 1 (i.e. same number of individuals per species) or

@@ -22,19 +22,30 @@ plot.traitgmyc <- function (x, ask = TRUE, ...) {
   threshRange <- range(-x$threshold.time[likDiffSmaller2], na.rm = TRUE)
   tree <- x$tree
   Bt <- sort(branching.times(tree), decreasing = TRUE)
-  TreeSimmap <- make.era.map(tree, c(0, max(Bt) - thresh))
+  if (x$TraitModel == "BMBM") {
+    TreeSimmap <- make.era.map(tree, c(0, max(Bt) - thresh))
+  }
+  if (x$TraitModel == "BMWN") {
+    TreeSimmap <- whiteNoiseSimmap(tree, thresh)
+  }
   trait <- x$trait
   Param <- NULL
   if (ncol(trait) > 1) {
-    Param <- list(constraint = "proportional", decomp = "eigen+")
+    Param <- list(constraint = "proportional", decomp = "spherical")
   }
   Method <- "rpf"
   if (ncol(trait) == 1 && sum(is.na(trait[, 1])) > 0) {
     Method <- "inverse"
   }
+  TraitModel <- "BMM"
+  if (whiLike == 1) {
+    TraitModel <- "BM1"
+    Param <- NULL
+    TreeSimmap <- tree
+  }
   TraitEvo <- mvBM(tree = TreeSimmap,
                    data = trait, error = x$meserr,
-                   model = "BMM",
+                   model = TraitModel,
                    method = Method,
                    param = Param,
                    control = list(maxit = 10000000),
@@ -53,14 +64,15 @@ plot.traitgmyc <- function (x, ask = TRUE, ...) {
     TraitAsr <- TraitPCA$x[, 1]
   }
   Y <- matrix(c(TraitAsr)[tree$edge], nrow(tree$edge), 2)
-  plot(Bt, 1:length(Bt), type = "n",
+  Lineages <- 1 + (1:length(Bt))
+  plot(Bt, Lineages, type = "n",
        xlim = c(max(-x$threshold.time), 0),
        log = "y", xlab = "Time", ylab = "N")
   rect(xleft = threshRange[2], ytop = length(Bt)*1.2,
        xright = threshRange[1], ybottom = 0.1,
        col = adjustcolor("red", 0.3), border = NA)
   abline(v = thresh, lty = 2, col = "red")
-  lines(Bt, 1:length(Bt), type = "s")
+  lines(Bt, Lineages, type = "s")
   plot(-x$threshold.time, x$sum_likelihoods, type = "n",
        xlim = c(max(-x$threshold.time), 0),
        xlab = "Time", ylab = "Likelihood")

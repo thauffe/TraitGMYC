@@ -28,7 +28,7 @@ If Nsim > 1 there should be multiphylo with the same number of species per tree}
 \item D2 Fluctuating population size; instant growth then shrink
 \item E Diversification with different sized populations
 \item F1 Random sample of individuals per species
-\item F2 Random sample of individuals per species, with sampling propabilities proportional to population sizes
+\item F2 Random sample of individuals per species, with sampling probabilities proportional to population sizes
 \item G Geographic structure
 }}
 

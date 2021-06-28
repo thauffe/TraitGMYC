@@ -33,21 +33,24 @@ simSigma <- function(Ntraits, Cor = NULL, Sigma2 = NULL) {
   else {
     Sigma2 <- runif(Ntraits, min = 1e-4, max = 0.2)
   }
-  Cov <- matrix(1, ncol = Ntraits, nrow = Ntraits)
-  Q <- Ntraits*(Ntraits-1)/2
-  if (!is.null(Cor)) {
-    if (length(Cor) != Q && length(Cor) != 1) {
-      stop("Correlation among traits should be of length 1 or Ntraits*(Ntraits-1)/2")
+  Sigmas <- matrix(Sigma2, nrow = 1)
+  if (Ntraits > 1) {
+    Cov <- matrix(1, ncol = Ntraits, nrow = Ntraits)
+    Q <- Ntraits*(Ntraits-1)/2
+    if (!is.null(Cor)) {
+      if (length(Cor) != Q && length(Cor) != 1) {
+        stop("Correlation among traits should be of length 1 or Ntraits*(Ntraits-1)/2")
+      }
+      SimCov <- Cor
     }
-    SimCov <- Cor
+    else {
+      SimCov <- runif(Q, min = -1, max = 1) # Trait correlation
+    }
+    Cov[lower.tri(Cov, diag = FALSE)] <- SimCov
+    Cov <- t(Cov)
+    Cov[lower.tri(Cov, diag = FALSE)] <- SimCov
+    Sigmas <- diag(Sigma2)  %*% Cov  %*% diag(Sigma2) # Correlation to covariance
   }
-  else {
-    SimCov <- runif(Q, min = -1, max = 1) # Trait correlation
-  }
-  Cov[lower.tri(Cov, diag = FALSE)] <- SimCov
-  Cov <- t(Cov)
-  Cov[lower.tri(Cov, diag = FALSE)] <- SimCov
-  Sigmas <- diag(Sigma2)  %*% Cov  %*% diag(Sigma2) # Correlation to covariance
   return(Sigmas)
 }
 
