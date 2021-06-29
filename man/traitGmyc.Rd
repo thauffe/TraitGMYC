@@ -87,6 +87,23 @@ Res <- traitGmyc(tr = GmycTree,
                  quiet = TRUE,
                  ncores = 1)
 plot(Res)
+
+SpeciesTree <- pbtree(b = 0.27, n = 10)
+GeneTree <- simGenealogy(Species = SpeciesTree,
+                         Scenario = "B",
+                         Ind = 5,
+                         PopSize = 100000)
+SimTraits <- simTraitsIndividuals(SpeciesTree,
+                                  Ntraits = 4,
+                                  IndPop = GeneTree$Species,
+                                  Sigma2 = rep(1, 4))
+Res <- traitGmyc(tr = GeneTree$Genealogy,
+                 trait = SimTraits,
+                 traitmodel = "BMWN",
+                 meserr = NULL,
+                 quiet = TRUE,
+                 ncores = 1)
+plot(Res, ask = FALSE)
 }
 }
 \author{
